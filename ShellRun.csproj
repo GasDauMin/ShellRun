@@ -4,10 +4,24 @@
     <OutputType>Exe</OutputType>
     <TargetFramework>netcoreapp3.1</TargetFramework>
     <ApplicationIcon>icon.ico</ApplicationIcon>
+    <Authors>GasDauMin</Authors>
+    <Company>co</Company>
+    <Product />
+    <PackageIcon>icon.ico</PackageIcon>
+    <PackageProjectUrl>gasdaumin.eu</PackageProjectUrl>
+    <Description>Shell execution helper</Description>
+    <SignAssembly>false</SignAssembly>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="McMaster.Extensions.CommandLineUtils" Version="3.1.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="icon.ico">
+      <Pack>True</Pack>
+      <PackagePath></PackagePath>
+    </None>
   </ItemGroup>
 
 </Project>
