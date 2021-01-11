@@ -2,7 +2,7 @@
   "profiles": {
     "ShellRun": {
       "commandName": "Project",
-      "commandLineArgs": "-f:a --debug:true"
+      "commandLineArgs": "-x"
     }
   }
 }

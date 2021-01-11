@@ -1,13 +1,12 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
 using System.Diagnostics;
 using System.Linq;
-using System.Linq.Expressions;
 using McMaster.Extensions.CommandLineUtils;
 using System.Runtime.InteropServices;
 using System.Threading;
+using System.IO;
 
 // CommandLineUtils: https://natemcmaster.github.io/CommandLineUtils/
 
@@ -34,12 +33,63 @@ Remarks:
     print         Prints the document file.
     properties    Displays the object's properties.
     runas         Launches an application as Administrator.
+
+  Description for allowed [-f|--flag] values:
+    d             Debug mode.
+    e             Expand environment variables.
+    h             Hide console window.
+    p             Pause console and wait for input.
+    s             Use shell execution.
 "
     )
   ]
   public class Program
   {
-    public static void Main(string[] args) => CommandLineApplication.Execute<Program>(args);
+    public static void Main(string[] args)
+    {
+      if (args.Contains("-x"))
+      {
+        var fileName = System.Diagnostics.Process.GetCurrentProcess().MainModule?.FileName;
+        var arguments = args.Where(arg => arg != "-x");
+
+        if (fileName != null)
+        {
+          var processInfo = new ProcessStartInfo();
+          processInfo.FileName = fileName;
+          processInfo.Arguments = string.Join(" ", arguments);
+          processInfo.Verb = "runas";
+          processInfo.UseShellExecute = true;
+
+          try
+          {
+            System.Diagnostics.Process.Start(processInfo);
+            System.Environment.Exit(1);
+          }
+          catch (System.ComponentModel.Win32Exception e)
+          {
+            Console.ForegroundColor = ConsoleColor.DarkYellow;
+            Console.Error.WriteLine("Unable to assign administrator permission.");
+            Console.ResetColor();
+          }
+        }
+      }
+
+      CommandLineApplication.Execute<Program>(args);
+    }
+
+    private void OnExecute()
+    {
+      this.Init();
+      this.Test();
+
+      switch (Action)
+      {
+        case ACTION.RUN: Run(); break;
+        case ACTION.DEBUG: Debug(); break;
+      }
+
+      Pause();
+    }
 
     #region :: Generic definitions ::
 
@@ -48,6 +98,13 @@ Remarks:
 
     const string C_NULL = "";
     const int C_MAXTRY = 3;
+
+    public enum ACTION
+    {
+      RUN,
+      DEBUG,
+      EXIT
+    }
 
     [DllImport("kernel32.dll")]
     static extern IntPtr GetConsoleWindow();
@@ -60,18 +117,18 @@ Remarks:
     #region :: Definition of options ::
 
     [Option("-f|--file", "The name of a document or application file to run in the process.", CommandOptionType.SingleOrNoValue)]
-    [Required]
     public string File { get; set; }
 
     [Option("-a|--args", "Command-line arguments to pass when starting the process.", CommandOptionType.MultipleValue)]
     public string[] Arguments { get; set; }
 
-    [Option("-w|--workdir", "Working directory for the process to be started.", CommandOptionType.SingleOrNoValue)]
-    public string Workdir { get; set; }
-
     [Option("-t|--type", "Type attribute defines how to run the program.", CommandOptionType.SingleValue)]
     [AllowedValues("si", "mi", "sir", "mir", IgnoreCase = true)]
     public string Type { get; set; }
+
+    [Option("-g|--flag", "Runtime flags.", CommandOptionType.SingleOrNoValue)]
+    [AllowedValues("d", "e", "h", "p", "s", IgnoreCase = true)]
+    public string Flag { get; set; }
 
     [Option("-v|--verb", "The verb attribute defines special directives on how to execute a file or launching the application.", CommandOptionType.SingleValue)]
     [AllowedValues("edit", "find", "open", "print", "properties", "runas", IgnoreCase = true)]
@@ -80,26 +137,19 @@ Remarks:
     [Option("-d|--delay", "Delay specified amount of milliseconds.", CommandOptionType.SingleOrNoValue)]
     public int Delay { get; set; }
 
-    [Option("-h|--shell", "Use shell execution.", CommandOptionType.SingleOrNoValue)]
-    public bool ShellExec { get; set; }
-
     [Option("-p|--pass", "Encrypt run with password.", CommandOptionType.SingleOrNoValue)]
     public string Password { get; set; }
 
-    [Option("-s|--separator", "Set default arguments separator.", CommandOptionType.SingleOrNoValue)]
+    [Option("-s|--spt", "Set default arguments separator.", CommandOptionType.SingleOrNoValue)]
     public string Separator { get; set; }
 
     [Option("-l|--split", "Split arguments according to specific separators.", CommandOptionType.MultipleValue)]
     public string[] Split { get; set; }
 
-    [Option("--expand", "Expand variables.", CommandOptionType.SingleOrNoValue)]
-    public bool Expand { get; set; }
+    [Option("-w|--workdir", "Working directory for the process to be started.", CommandOptionType.SingleOrNoValue)]
+    public string Workdir { get; set; }
 
-    [Option("--hide", "Hide console window.", CommandOptionType.SingleOrNoValue)]
-    public bool Hide { get; set; }
-
-    [Option("--debug", "Debug mode.", CommandOptionType.SingleOrNoValue)]
-    public bool Debug { get; set; }
+    public ACTION Action { get; set; }
 
     public string[] RemainingArguments { get; set; }
 
@@ -109,66 +159,19 @@ Remarks:
 
     #endregion
 
-    #region :: Definition of general elements ::
+    #region :: Definition of flags ::
 
-    public void Init()
-    {
-      // Set default values
+    public bool FlagDebug() => Flag.ToLower().Contains("d");
 
-      Separator ??= " ";
+    public bool FlagExpand() => Flag.ToLower().Contains("e");
 
-      // Set evaluated values
+    public bool FlagShell() => Flag.ToLower().Contains("s");
 
-      InitArguments();
-    }
+    public bool FlagPause() => Flag.ToLower().Contains("p");
 
-    private void InitArguments()
-    {
-      // Init <ReorganizedArguments>..
+    public bool FlagHide() => Flag.ToLower().Contains("h");
 
-      var arguments = Arguments;
-      if (arguments == null || arguments.Length <= 0)
-        return;
-
-      var list = new List<string>();
-
-      foreach (var argument in arguments)
-      {
-        var value = Expand ? Environment.ExpandEnvironmentVariables(argument) : argument;
-
-        //..
-
-        if (Split == null)
-        {
-          list.Add(value);
-        }
-        else
-        {
-          list.AddRange(value.Split(Split, StringSplitOptions.None));
-        }
-      }
-
-      ReorganizedArguments = list.ToArray();
-
-      // Init <ProcessArguments>..
-
-      arguments = IsReorganized() ? ReorganizedArguments : Arguments;
-      if (arguments == null || arguments.Length <= 0)
-        return;
-
-      list = new List<string>();
-
-      if (Type == "si" || Type == "sir")
-      {
-        list.Add(string.Join(Separator, arguments));
-      }
-      else
-      {
-        list.AddRange(arguments);
-      }
-
-      ProcessArguments = list.ToArray();
-    }
+    public bool FlagLocked() => (Password != null);
 
     public bool IsMultiInstance()
     {
@@ -185,17 +188,111 @@ Remarks:
       return (Type == "mir" || Type == "sir");
     }
 
-    public bool IsLocked()
+    #endregion
+
+    #region :: Definition of general elements ::
+
+    public void Init()
     {
-      return (Password != null);
+      // Set default values
+
+      Separator ??= " ";
+      Flag ??= "";
+
+      // Set action value
+
+      Action = ACTION.RUN;
+
+      if (FlagDebug())
+      {
+        Action = ACTION.DEBUG;
+      }
+      
+      // Init <ReorganizedArguments>..
+
+      var list = new List<string>();
+      var arguments = Arguments;
+      if (arguments != null && arguments.Length > 0)
+      {
+        foreach (var argument in arguments)
+        {
+          var value = FlagExpand() ? Environment.ExpandEnvironmentVariables(argument) : argument;
+
+          if (Split == null)
+          {
+            list.Add(value);
+          }
+          else
+          {
+            list.AddRange(value.Split(Split, StringSplitOptions.None));
+          }
+        }
+      }
+
+      ReorganizedArguments = list.ToArray();
+
+      // Init <ProcessArguments>..
+
+      list = new List<string>();
+      arguments = IsReorganized() ? ReorganizedArguments : Arguments;
+      if (arguments != null && arguments.Length > 0)
+      {
+        if (Type == "si" || Type == "sir")
+        {
+          list.Add(string.Join(Separator, arguments));
+        }
+        else
+        {
+          list.AddRange(arguments);
+        }
+      }
+
+      ProcessArguments = list.ToArray();
+
+      // Other operations..
+
+      if (FlagHide() && Action == ACTION.RUN)
+      {
+        IntPtr h = Process.GetCurrentProcess().MainWindowHandle;
+        ShowWindow(h, SW_HIDE);
+      }
     }
 
-    public bool TryUnlock()
+    public void Test()
+    {
+      var ok = true;
+
+      // Try unlock..
+
+      if (FlagLocked())
+      {
+        if (Unlock() == false)
+        {
+          ok = false;
+        }
+      }
+
+      // Test values..
+
+      if (!System.IO.File.Exists(File))
+      {
+        ok = PrintErrorValue($"File '{File}' does not exists.");
+      }
+
+      //..
+
+      if (!ok)
+      {
+        Action = ACTION.EXIT;
+      }
+    }
+
+    public bool Unlock()
     {
       var success = false;
       var attempt = C_MAXTRY;
 
-      if (!this.IsLocked())
+      if (!this.FlagLocked())
         return true;
 
       do
@@ -208,20 +305,18 @@ Remarks:
         {
           attempt--;
 
-          Console.ForegroundColor = ConsoleColor.Red;
-          Console.Error.WriteLine(attempt > 0 ? $"Wrong password, attempts left {attempt}." : "Authorization failed! :-(");
-          Console.ResetColor();
+          PrintErrorValue(attempt > 0 ? $"Wrong password, attempts left {attempt}." : "Authorization failed! :-(");
         }
       } while (!success && attempt > 0);
 
       return success;
     }
 
-    public void TryRun()
+    public void Run()
     {
       void run(string arguments = null)
       {
-        var processInfo = new ProcessStartInfo {FileName = File};
+        var processInfo = new ProcessStartInfo(File);
 
         if (arguments != null)
           processInfo.Arguments = arguments;
@@ -232,10 +327,10 @@ Remarks:
         if (Verb != null)
           processInfo.Verb = Verb;
 
-        if (ShellExec)
+        if (FlagShell())
           processInfo.UseShellExecute = true;
 
-        if (Hide)
+        if (FlagHide())
         {
           processInfo.CreateNoWindow = true;
           processInfo.RedirectStandardError = false;
@@ -245,8 +340,10 @@ Remarks:
 
         Process.Start(processInfo);
       }
-      
+
       //..
+      
+      Console.Clear();
 
       if (ProcessArguments == null)
       {
@@ -266,21 +363,42 @@ Remarks:
       }
     }
 
+    public void Pause()
+    {
+      if (FlagPause())
+      {
+        Console.ReadLine();
+      }
+    }
+
     #endregion
 
     #region :: Definition of debuging elements ::
 
-    private void PrintDebugArray(string name, string[] array)
+    public void Debug()
     {
-      var format = "  {0,-10} => {1}";
+      Console.Clear();
+      Console.WriteLine("Variables:");
+      PrintDebugValue("File", File);
+      PrintDebugValue("Workdir", Workdir);
+      PrintDebugValue("Type", Type);
+      PrintDebugValue("Verb", Verb);
+      PrintDebugValue("Split", Split);
+      PrintDebugValue("Separator", Separator);
+      PrintDebugValue("Delay", Delay);
+      PrintDebugValue("Expand", FlagExpand());
+      PrintDebugValue("Shell", FlagShell());
+      PrintDebugValue("Hide", FlagHide());
+      PrintDebugValue("Locked", FlagLocked());
 
-      if (array == null)
-        return;
+      Console.WriteLine("\r\nProcess arguments:");
+      PrintDebugArray("Item", ProcessArguments);
 
-      for (var i = 0; i < array.Length; i++)
-      {
-        Console.WriteLine(format, $"{name}[{i}]", array[i]);
-      }
+      Console.WriteLine("\r\nInitial arguments:");
+      PrintDebugArray("Item", Arguments);
+
+      Console.WriteLine("\r\nUnrecognized arguments:");
+      PrintDebugArray("Item", RemainingArguments);
     }
 
     private void PrintDebugValue(string name, object element)
@@ -306,59 +424,28 @@ Remarks:
       Console.WriteLine(format, name, value);
     }
 
-    public void PrintDebugInfo()
+    private void PrintDebugArray(string name, string[] array)
     {
-      Console.WriteLine("Variables:");
-      PrintDebugValue("File", File);
-      PrintDebugValue("Workdir", Workdir);
-      PrintDebugValue("Type", Type);
-      PrintDebugValue("Verb", Verb);
-      PrintDebugValue("Split", Split);
-      PrintDebugValue("Separator", Separator);
-      PrintDebugValue("Delay", Delay);
-      PrintDebugValue("Expand", Expand);
-      PrintDebugValue("Shell", ShellExec);
-      PrintDebugValue("Hide", Hide);
-      PrintDebugValue("Lock", IsLocked());
+      var format = "  {0,-10} => {1}";
 
-      Console.WriteLine("\r\nProcess arguments:");
-      PrintDebugArray("Item", ProcessArguments);
+      if (array == null)
+        return;
 
-      Console.WriteLine("\r\nInitial arguments:");
-      PrintDebugArray("Item", Arguments);
-
-      Console.WriteLine("\r\nUnrecognized arguments:");
-      PrintDebugArray("Item", RemainingArguments);
+      for (var i = 0; i < array.Length; i++)
+      {
+        Console.WriteLine(format, $"{name}[{i}]", array[i]);
+      }
     }
 
-    #endregion  
-
-    private void OnExecute()
+    private bool PrintErrorValue(string message)
     {
-      this.Init();
+      Console.ForegroundColor = ConsoleColor.Red;
+      Console.Error.WriteLine(message);
+      Console.ResetColor();
 
-      if (!TryUnlock())
-      {
-        Console.ReadLine();
-        return;
-      }
-
-      Console.Clear();
-
-      if (Hide)
-      {
-        IntPtr h = Process.GetCurrentProcess().MainWindowHandle;
-        ShowWindow(h, SW_HIDE);
-      }
-
-      if (Debug)
-      {
-        PrintDebugInfo();
-        Console.ReadLine();
-        return;
-      }
-
-      TryRun();
+      return false;
     }
+
+    #endregion
   }
 }
