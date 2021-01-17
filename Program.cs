@@ -7,6 +7,7 @@ using McMaster.Extensions.CommandLineUtils;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.IO;
+using System.Text;
 
 // CommandLineUtils: https://natemcmaster.github.io/CommandLineUtils/
 
@@ -47,6 +48,9 @@ Remarks:
   {
     public static void Main(string[] args)
     {
+      Console.OutputEncoding = Encoding.UTF8;
+      Console.InputEncoding = Encoding.UTF8;
+
       if (args.Contains("-x"))
       {
         var fileName = System.Diagnostics.Process.GetCurrentProcess().MainModule?.FileName;
@@ -127,7 +131,6 @@ Remarks:
     public string Type { get; set; }
 
     [Option("-g|--flag", "Runtime flags.", CommandOptionType.SingleOrNoValue)]
-    [AllowedValues("d", "e", "h", "p", "s", IgnoreCase = true)]
     public string Flag { get; set; }
 
     [Option("-v|--verb", "The verb attribute defines special directives on how to execute a file or launching the application.", CommandOptionType.SingleValue)]
@@ -276,7 +279,10 @@ Remarks:
 
       if (!System.IO.File.Exists(File))
       {
-        ok = PrintErrorValue($"File '{File}' does not exists.");
+        if (Action != ACTION.DEBUG)
+        {
+          ok = PrintErrorValue($"File '{File}' does not exists.");
+        }
       }
 
       //..
@@ -337,6 +343,10 @@ Remarks:
           processInfo.RedirectStandardOutput = false;
           processInfo.WindowStyle = ProcessWindowStyle.Hidden;
         }
+
+        processInfo.StandardErrorEncoding = Encoding.UTF8;
+        processInfo.StandardInputEncoding = Encoding.UTF8;
+        processInfo.StandardOutputEncoding = Encoding.UTF8;
 
         Process.Start(processInfo);
       }
