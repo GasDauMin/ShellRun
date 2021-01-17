@@ -2,7 +2,7 @@
   "profiles": {
     "ShellRun": {
       "commandName": "Project",
-      "commandLineArgs": "ShellRun.exe -f:\"C:\\Home\\Apps\\Media\\Spek\\bin\\spek.exe\" -a:\"C:\\Users\\GasDauMin\\Downloads\\Deemix\\Slava Marlow - Нет Проблем.mp3\" -l:\";\" -t:mir -g:pd"
+      "commandLineArgs": "ShellRun.exe -f:\"C:\\Home\\Apps\\Media\\Spek\\bin\\spek.exe\" -a:\"C:\\Users\\GasDauMin\\Downloads\\Deemix\\Slava Marlow - Нет Проблем.mp3\" -l:\";\" -t:mir -u:io"
     }
   }
 }

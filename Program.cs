@@ -1,12 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.ComponentModel.DataAnnotations;
 using System.Diagnostics;
 using System.Linq;
 using McMaster.Extensions.CommandLineUtils;
 using System.Runtime.InteropServices;
 using System.Threading;
-using System.IO;
 using System.Text;
 
 // CommandLineUtils: https://natemcmaster.github.io/CommandLineUtils/
@@ -41,6 +39,11 @@ Remarks:
     h             Hide console window.
     p             Pause console and wait for input.
     s             Use shell execution.
+
+  Description for allowed [-u|--unicode] values:
+    i             Standard input encoding UTF-8.
+    o             Standard output encoding UTF-8.
+    e             Standard error encoding UTF-8.
 "
     )
   ]
@@ -133,6 +136,9 @@ Remarks:
     [Option("-g|--flag", "Runtime flags.", CommandOptionType.SingleOrNoValue)]
     public string Flag { get; set; }
 
+    [Option("-u|--unicode", "Unicode flags.", CommandOptionType.SingleOrNoValue)]
+    public string Unicode { get; set; }
+
     [Option("-v|--verb", "The verb attribute defines special directives on how to execute a file or launching the application.", CommandOptionType.SingleValue)]
     [AllowedValues("edit", "find", "open", "print", "properties", "runas", IgnoreCase = true)]
     public string Verb { get; set; }
@@ -176,6 +182,12 @@ Remarks:
 
     public bool FlagLocked() => (Password != null);
 
+    public bool FlagUnicodeInput() => Unicode.ToLower().Contains("i");
+
+    public bool FlagUnicodeOutput() => Unicode.ToLower().Contains("o");
+
+    public bool FlagUnicodeErrors() => Unicode.ToLower().Contains("e");
+
     public bool IsMultiInstance()
     {
       return (Type == "mir" || Type == "mi");
@@ -200,6 +212,7 @@ Remarks:
       // Set default values
 
       Separator ??= " ";
+      Unicode ??= "";
       Flag ??= "";
 
       // Set action value
@@ -344,9 +357,23 @@ Remarks:
           processInfo.WindowStyle = ProcessWindowStyle.Hidden;
         }
 
-        processInfo.StandardErrorEncoding = Encoding.UTF8;
-        processInfo.StandardInputEncoding = Encoding.UTF8;
-        processInfo.StandardOutputEncoding = Encoding.UTF8;
+        if (FlagUnicodeInput())
+        {
+          processInfo.StandardInputEncoding = Encoding.UTF8;
+          processInfo.RedirectStandardInput = true;
+        }
+
+        if (FlagUnicodeOutput())
+        {
+          processInfo.StandardOutputEncoding = Encoding.UTF8;
+          processInfo.RedirectStandardOutput = true;
+        }
+
+        if (FlagUnicodeErrors())
+        {
+          processInfo.StandardErrorEncoding = Encoding.UTF8;
+          processInfo.RedirectStandardError = true;
+        }
 
         Process.Start(processInfo);
       }
