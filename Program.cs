@@ -6,6 +6,8 @@ using McMaster.Extensions.CommandLineUtils;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Text;
+using NLog.Fluent;
+using LogLevel = NLog.LogLevel;
 
 // CommandLineUtils: https://natemcmaster.github.io/CommandLineUtils/
 
@@ -51,6 +53,8 @@ Remarks:
   {
     public static void Main(string[] args)
     {
+      Logger.Debug("Application started");
+
       Console.OutputEncoding = Encoding.UTF8;
       Console.InputEncoding = Encoding.UTF8;
 
@@ -61,41 +65,55 @@ Remarks:
 
         if (fileName != null)
         {
-          var processInfo = new ProcessStartInfo();
-          processInfo.FileName = fileName;
-          processInfo.Arguments = string.Join(" ", arguments);
-          processInfo.Verb = "runas";
-          processInfo.UseShellExecute = true;
+          var processInfo = new ProcessStartInfo
+          {
+            FileName = fileName, 
+            Arguments = string.Join(" ", arguments), 
+            Verb = "runas", 
+            UseShellExecute = true
+          };
 
           try
           {
             System.Diagnostics.Process.Start(processInfo);
             System.Environment.Exit(1);
           }
-          catch (System.ComponentModel.Win32Exception e)
+          catch (System.ComponentModel.Win32Exception ex)
           {
-            Console.ForegroundColor = ConsoleColor.DarkYellow;
-            Console.Error.WriteLine("Unable to assign administrator permission.");
-            Console.ResetColor();
+            Logger.Error("Unable to assign administrator permission.");
           }
         }
       }
 
       CommandLineApplication.Execute<Program>(args);
+
+      Logger.Debug("Application finished");
     }
 
     private void OnExecute()
     {
-      this.Init();
-      this.Test();
+      Logger.Debug("Execution started");
 
-      switch (Action)
+      try
       {
-        case ACTION.RUN: Run(); break;
-        case ACTION.DEBUG: Debug(); break;
+        this.Init();
+        this.Check();
+        this.Debug();
+        
+        switch (Action)
+        {
+          case ACTION.RUN: Run(); break;
+          case ACTION.DEBUG: this.Debug(LogLevel.Info); break;
+        }
+
+        Pause();
+      }
+      catch (Exception ex)
+      {
+        Logger.Fatal($"Exception:\r\n{ex}");
       }
 
-      Pause();
+      Logger.Debug("Execution finished");
     }
 
     #region :: Generic definitions ::
@@ -158,13 +176,18 @@ Remarks:
     [Option("-w|--workdir", "Working directory for the process to be started.", CommandOptionType.SingleOrNoValue)]
     public string Workdir { get; set; }
 
-    public ACTION Action { get; set; }
+    [Option("-q|--quotation", "Quotation marks for reorganized arguments.", CommandOptionType.SingleOrNoValue)]
+    public string Quotation { get; set; }
 
     public string[] RemainingArguments { get; set; }
 
     public string[] ReorganizedArguments { get; set; }
 
     public string[] ProcessArguments { get; set; }
+
+    public string[] ExecutionArguments { get; set; }
+
+    public ACTION Action { get; set; }
 
     #endregion
 
@@ -242,6 +265,12 @@ Remarks:
           {
             list.AddRange(value.Split(Split, StringSplitOptions.None));
           }
+
+          if (Quotation != null)
+          {
+            var format = (Quotation + "{0}" + Quotation);
+            list = list.Select(x => string.Format(format, x)).ToList();
+          }
         }
       }
 
@@ -265,6 +294,10 @@ Remarks:
 
       ProcessArguments = list.ToArray();
 
+      // Init <ExecutionArguments>..
+
+      ExecutionArguments = ProcessArguments.Select(x => $"\"{File}\" {x}").ToArray();
+
       // Other operations..
 
       if (FlagHide() && Action == ACTION.RUN)
@@ -274,7 +307,7 @@ Remarks:
       }
     }
 
-    public void Test()
+    public void Check()
     {
       var ok = true;
 
@@ -294,7 +327,8 @@ Remarks:
       {
         if (Action != ACTION.DEBUG)
         {
-          ok = PrintErrorValue($"File '{File}' does not exists.");
+          ok = false;
+          Logger.Error($"File '{File}' does not exists.");
         }
       }
 
@@ -324,7 +358,7 @@ Remarks:
         {
           attempt--;
 
-          PrintErrorValue(attempt > 0 ? $"Wrong password, attempts left {attempt}." : "Authorization failed! :-(");
+          Logger.Warn(attempt > 0 ? $"Wrong password, attempts left {attempt}." : "Authorization failed! :-(");
         }
       } while (!success && attempt > 0);
 
@@ -355,12 +389,6 @@ Remarks:
           processInfo.RedirectStandardError = false;
           processInfo.RedirectStandardOutput = false;
           processInfo.WindowStyle = ProcessWindowStyle.Hidden;
-        }
-
-        if (FlagUnicodeInput())
-        {
-          processInfo.StandardInputEncoding = Encoding.UTF8;
-          processInfo.RedirectStandardInput = true;
         }
 
         if (FlagUnicodeOutput())
@@ -410,79 +438,56 @@ Remarks:
 
     #endregion
 
-    #region :: Definition of debuging elements ::
+    #region :: Definition of logging elements ::
 
-    public void Debug()
+    private static readonly NLog.Logger Logger = NLog.LogManager.GetCurrentClassLogger();
+
+    private void Debug(LogLevel level = null)
     {
-      Console.Clear();
-      Console.WriteLine("Variables:");
-      PrintDebugValue("File", File);
-      PrintDebugValue("Workdir", Workdir);
-      PrintDebugValue("Type", Type);
-      PrintDebugValue("Verb", Verb);
-      PrintDebugValue("Split", Split);
-      PrintDebugValue("Separator", Separator);
-      PrintDebugValue("Delay", Delay);
-      PrintDebugValue("Expand", FlagExpand());
-      PrintDebugValue("Shell", FlagShell());
-      PrintDebugValue("Hide", FlagHide());
-      PrintDebugValue("Locked", FlagLocked());
+      level ??= LogLevel.Debug;
 
-      Console.WriteLine("\r\nProcess arguments:");
-      PrintDebugArray("Item", ProcessArguments);
+      var padWidth = 70;
+      var padChar = '-';
 
-      Console.WriteLine("\r\nInitial arguments:");
-      PrintDebugArray("Item", Arguments);
+      Logger.Log(level, "".PadLeft(padWidth, padChar));
+      Logger.Log(level, " VALUES");
+      Logger.Log(level, "".PadLeft(padWidth, padChar));
 
-      Console.WriteLine("\r\nUnrecognized arguments:");
-      PrintDebugArray("Item", RemainingArguments);
-    }
+      Logger.Log(level, " [File]       => {@value}", File);
+      Logger.Log(level, " [Workdir]    => {@value}", Workdir);
+      Logger.Log(level, " [Type]       => {@value}", Type);
+      Logger.Log(level, " [Verb]       => {@value}", Verb);
+      Logger.Log(level, " [Flag]       => {@value}", Flag);
+      Logger.Log(level, " [Split]      => {@value}", Split);
+      Logger.Log(level, " [Delay]      => {@value}", Delay);
+      Logger.Log(level, " [Action]     => {@value}", Action);
+      Logger.Log(level, " [Unicode]    => {@value}", Unicode);
+      Logger.Log(level, " [Separator]  => {@value}", Separator);
+      Logger.Log(level, " [Quotation]  => {@value}", Quotation);
 
-    private void PrintDebugValue(string name, object element)
-    {
-      var format = "  {0,-10} => {1}";
-      var value = C_NULL;
+      Logger.Log(level, "".PadLeft(padWidth, padChar));
+      Logger.Log(level, " FLAGS");
+      Logger.Log(level, "".PadLeft(padWidth, padChar));
 
-      if (element != null)
-      {
-        var type = element.GetType();
+      Logger.Log(level, " [FlagDebug]  => {@value}", FlagDebug());
+      Logger.Log(level, " [FlagExpand] => {@value}", FlagExpand());
+      Logger.Log(level, " [FlagShell]  => {@value}", FlagShell());
+      Logger.Log(level, " [FlagHide]   => {@value}", FlagHide());
+      Logger.Log(level, " [FlagLocked] => {@value}", FlagLocked());
 
-        if (type.IsArray)
-        {
-          var arr = Array.ConvertAll((object[])element, Convert.ToString);
-          value = "[" + (string.Join("], [", arr)) + "]";
-        }
-        else
-        {
-          value = $"[{element}]";
-        }
-      }
+      Logger.Log(level, "".PadLeft(padWidth, padChar));
+      Logger.Log(level, " ARGUMENTS");
+      Logger.Log(level, "".PadLeft(padWidth, padChar));
 
-      Console.WriteLine(format, name, value);
-    }
+      Logger.Log(level, " [Execution]  => {@value}", ExecutionArguments);
+      Logger.Log(level, " [Process]    => {@value}", ProcessArguments);
+      Logger.Log(level, " [Initial]    => {@value}", Arguments);
+      Logger.Log(level, " [Unknown]    => {@value}", RemainingArguments);
 
-    private void PrintDebugArray(string name, string[] array)
-    {
-      var format = "  {0,-10} => {1}";
-
-      if (array == null)
-        return;
-
-      for (var i = 0; i < array.Length; i++)
-      {
-        Console.WriteLine(format, $"{name}[{i}]", array[i]);
-      }
-    }
-
-    private bool PrintErrorValue(string message)
-    {
-      Console.ForegroundColor = ConsoleColor.Red;
-      Console.Error.WriteLine(message);
-      Console.ResetColor();
-
-      return false;
+      Logger.Log(level, "".PadLeft(padWidth, padChar));
     }
 
     #endregion
+
   }
 }
