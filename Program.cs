@@ -80,7 +80,7 @@ Remarks:
           }
           catch (System.ComponentModel.Win32Exception ex)
           {
-            Logger.Error("Unable to assign administrator permission.");
+            Logger.Fatal($"Exception:\r\n{ex}");
           }
         }
       }
@@ -92,28 +92,31 @@ Remarks:
 
     private void OnExecute()
     {
-      Logger.Debug("Execution started");
-
       try
       {
-        this.Init();
-        this.Check();
-        this.Debug();
-        
-        switch (Action)
-        {
-          case ACTION.RUN: Run(); break;
-          case ACTION.DEBUG: this.Debug(LogLevel.Info); break;
-        }
+        Logger.Debug("Init [1/5]");
 
-        Pause();
+        this.Init();
+
+        Logger.Debug("Check [2/5]");
+
+        this.Check();
+
+        Logger.Debug("Debug [3/5]");
+
+        this.Debug();
+
+        Logger.Debug("Action [4/5]");
+
+        this.Action();
+
+        Logger.Debug("End [5/5]");
+
       }
       catch (Exception ex)
       {
         Logger.Fatal($"Exception:\r\n{ex}");
       }
-
-      Logger.Debug("Execution finished");
     }
 
     #region :: Generic definitions ::
@@ -126,7 +129,7 @@ Remarks:
 
     public enum ACTION
     {
-      RUN,
+      EXECUTE,
       DEBUG,
       EXIT
     }
@@ -136,6 +139,8 @@ Remarks:
 
     [DllImport("user32.dll")]
     static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+    private static readonly NLog.Logger Logger = NLog.LogManager.GetCurrentClassLogger();
 
     #endregion
 
@@ -187,7 +192,7 @@ Remarks:
 
     public string[] ExecutionArguments { get; set; }
 
-    public ACTION Action { get; set; }
+    public ACTION ActionValue { get; set; }
 
     #endregion
 
@@ -240,11 +245,11 @@ Remarks:
 
       // Set action value
 
-      Action = ACTION.RUN;
+      ActionValue = ACTION.EXECUTE;
 
       if (FlagDebug())
       {
-        Action = ACTION.DEBUG;
+        ActionValue = ACTION.DEBUG;
       }
       
       // Init <ReorganizedArguments>..
@@ -300,7 +305,7 @@ Remarks:
 
       // Other operations..
 
-      if (FlagHide() && Action == ACTION.RUN)
+      if (FlagHide() && ActionValue == ACTION.EXECUTE)
       {
         IntPtr h = Process.GetCurrentProcess().MainWindowHandle;
         ShowWindow(h, SW_HIDE);
@@ -325,7 +330,7 @@ Remarks:
 
       if (!System.IO.File.Exists(File))
       {
-        if (Action != ACTION.DEBUG)
+        if (ActionValue != ACTION.DEBUG)
         {
           ok = false;
           Logger.Error($"File '{File}' does not exists.");
@@ -336,11 +341,67 @@ Remarks:
 
       if (!ok)
       {
-        Action = ACTION.EXIT;
+        ActionValue = ACTION.EXIT;
       }
     }
 
-    public bool Unlock()
+    public void Debug(LogLevel level = null)
+    {
+      level ??= LogLevel.Debug;
+
+      var padWidth = 70;
+      var padChar = '-';
+
+      Logger.Log(level, "".PadLeft(padWidth, padChar));
+      Logger.Log(level, " VALUES");
+      Logger.Log(level, "".PadLeft(padWidth, padChar));
+
+      Logger.Log(level, " [File]       => {@value}", File);
+      Logger.Log(level, " [Workdir]    => {@value}", Workdir);
+      Logger.Log(level, " [Type]       => {@value}", Type);
+      Logger.Log(level, " [Verb]       => {@value}", Verb);
+      Logger.Log(level, " [Flag]       => {@value}", Flag);
+      Logger.Log(level, " [Split]      => {@value}", Split);
+      Logger.Log(level, " [Delay]      => {@value}", Delay);
+      Logger.Log(level, " [Action]     => {@value}", ActionValue);
+      Logger.Log(level, " [Unicode]    => {@value}", Unicode);
+      Logger.Log(level, " [Separator]  => {@value}", Separator);
+      Logger.Log(level, " [Quotation]  => {@value}", Quotation);
+
+      Logger.Log(level, "".PadLeft(padWidth, padChar));
+      Logger.Log(level, " FLAGS");
+      Logger.Log(level, "".PadLeft(padWidth, padChar));
+
+      Logger.Log(level, " [FlagDebug]  => {@value}", FlagDebug());
+      Logger.Log(level, " [FlagExpand] => {@value}", FlagExpand());
+      Logger.Log(level, " [FlagShell]  => {@value}", FlagShell());
+      Logger.Log(level, " [FlagHide]   => {@value}", FlagHide());
+      Logger.Log(level, " [FlagLocked] => {@value}", FlagLocked());
+
+      Logger.Log(level, "".PadLeft(padWidth, padChar));
+      Logger.Log(level, " ARGUMENTS");
+      Logger.Log(level, "".PadLeft(padWidth, padChar));
+
+      Logger.Log(level, " [Execution]  => {@value}", ExecutionArguments);
+      Logger.Log(level, " [Process]    => {@value}", ProcessArguments);
+      Logger.Log(level, " [Initial]    => {@value}", Arguments);
+      Logger.Log(level, " [Unknown]    => {@value}", RemainingArguments);
+
+      Logger.Log(level, "".PadLeft(padWidth, padChar));
+    }
+
+    public void Action()
+    {
+      switch (ActionValue)
+      {
+        case ACTION.EXECUTE: this.Execute(); break;
+        case ACTION.DEBUG: this.Debug(LogLevel.Info); break;
+      }
+
+      Pause();
+    }
+
+    private bool Unlock()
     {
       var success = false;
       var attempt = C_MAXTRY;
@@ -365,7 +426,7 @@ Remarks:
       return success;
     }
 
-    public void Run()
+    private void Execute()
     {
       void run(string arguments = null)
       {
@@ -428,63 +489,12 @@ Remarks:
       }
     }
 
-    public void Pause()
+    private void Pause()
     {
       if (FlagPause())
       {
         Console.ReadLine();
       }
-    }
-
-    #endregion
-
-    #region :: Definition of logging elements ::
-
-    private static readonly NLog.Logger Logger = NLog.LogManager.GetCurrentClassLogger();
-
-    private void Debug(LogLevel level = null)
-    {
-      level ??= LogLevel.Debug;
-
-      var padWidth = 70;
-      var padChar = '-';
-
-      Logger.Log(level, "".PadLeft(padWidth, padChar));
-      Logger.Log(level, " VALUES");
-      Logger.Log(level, "".PadLeft(padWidth, padChar));
-
-      Logger.Log(level, " [File]       => {@value}", File);
-      Logger.Log(level, " [Workdir]    => {@value}", Workdir);
-      Logger.Log(level, " [Type]       => {@value}", Type);
-      Logger.Log(level, " [Verb]       => {@value}", Verb);
-      Logger.Log(level, " [Flag]       => {@value}", Flag);
-      Logger.Log(level, " [Split]      => {@value}", Split);
-      Logger.Log(level, " [Delay]      => {@value}", Delay);
-      Logger.Log(level, " [Action]     => {@value}", Action);
-      Logger.Log(level, " [Unicode]    => {@value}", Unicode);
-      Logger.Log(level, " [Separator]  => {@value}", Separator);
-      Logger.Log(level, " [Quotation]  => {@value}", Quotation);
-
-      Logger.Log(level, "".PadLeft(padWidth, padChar));
-      Logger.Log(level, " FLAGS");
-      Logger.Log(level, "".PadLeft(padWidth, padChar));
-
-      Logger.Log(level, " [FlagDebug]  => {@value}", FlagDebug());
-      Logger.Log(level, " [FlagExpand] => {@value}", FlagExpand());
-      Logger.Log(level, " [FlagShell]  => {@value}", FlagShell());
-      Logger.Log(level, " [FlagHide]   => {@value}", FlagHide());
-      Logger.Log(level, " [FlagLocked] => {@value}", FlagLocked());
-
-      Logger.Log(level, "".PadLeft(padWidth, padChar));
-      Logger.Log(level, " ARGUMENTS");
-      Logger.Log(level, "".PadLeft(padWidth, padChar));
-
-      Logger.Log(level, " [Execution]  => {@value}", ExecutionArguments);
-      Logger.Log(level, " [Process]    => {@value}", ProcessArguments);
-      Logger.Log(level, " [Initial]    => {@value}", Arguments);
-      Logger.Log(level, " [Unknown]    => {@value}", RemainingArguments);
-
-      Logger.Log(level, "".PadLeft(padWidth, padChar));
     }
 
     #endregion
