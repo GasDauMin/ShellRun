@@ -6,7 +6,8 @@ using McMaster.Extensions.CommandLineUtils;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Text;
-using NLog.Fluent;
+using System.Text.RegularExpressions;
+using NLog;
 using LogLevel = NLog.LogLevel;
 
 // CommandLineUtils: https://natemcmaster.github.io/CommandLineUtils/
@@ -60,15 +61,19 @@ Remarks:
 
       if (args.Contains("-x"))
       {
-        var fileName = System.Diagnostics.Process.GetCurrentProcess().MainModule?.FileName;
-        var arguments = args.Where(arg => arg != "-x");
+        var command = Marshal.PtrToStringAuto(GetCommandLine()); //Alternative for [System.Environment.CommandLine;
 
-        if (fileName != null)
+        var filename = command.Split(' ')[0];
+        var arguments = command.Substring(filename.Length, (command.Length - filename.Length));
+
+        if (!String.IsNullOrEmpty(filename))
         {
+          arguments = Regex.Replace(arguments, "(^| )-x($| )", "$1$2");
+
           var processInfo = new ProcessStartInfo
           {
-            FileName = fileName, 
-            Arguments = string.Join(" ", arguments), 
+            FileName = filename, 
+            Arguments = arguments, 
             Verb = "runas", 
             UseShellExecute = true
           };
@@ -133,6 +138,9 @@ Remarks:
       DEBUG,
       EXIT
     }
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Auto)]
+    private static extern System.IntPtr GetCommandLine();
 
     [DllImport("kernel32.dll")]
     static extern IntPtr GetConsoleWindow();
