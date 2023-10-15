@@ -8,6 +8,7 @@ using System.Threading;
 using System.Text;
 using System.Text.RegularExpressions;
 using NLog;
+
 using LogLevel = NLog.LogLevel;
 
 // CommandLineUtils: https://natemcmaster.github.io/CommandLineUtils/
@@ -59,14 +60,13 @@ Remarks:
       Console.OutputEncoding = Encoding.UTF8;
       Console.InputEncoding = Encoding.UTF8;
 
-      if (args.Contains("-x"))
+      var command = Marshal.PtrToStringAuto(GetCommandLine()); //Alternative for [System.Environment.CommandLine;]
+      if (command != null && args.Contains("-x"))
       {
-        var command = Marshal.PtrToStringAuto(GetCommandLine()); //Alternative for [System.Environment.CommandLine;
-
         var filename = command.Split(' ')[0];
         var arguments = command.Substring(filename.Length, (command.Length - filename.Length));
 
-        if (!String.IsNullOrEmpty(filename))
+        if (!string.IsNullOrEmpty(filename))
         {
           arguments = Regex.Replace(arguments, "(^| )-x($| )", "$1$2");
 
@@ -479,7 +479,7 @@ Remarks:
       
       Console.Clear();
 
-      if (ProcessArguments == null)
+      if (ProcessArguments == null || ProcessArguments.Length == 0)
       {
         run();
       }
