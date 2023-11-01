@@ -35,7 +35,4 @@
       </PackagePath>
     </None>
   </ItemGroup>
-  <Target Name="PostBuild" AfterTargets="PostBuildEvent">
-    <Exec Command="del $(ProjectDir)$(OutDir)\*.log&#xD;&#xA;del $(ProjectDir)..\..\bin\$(Configuration)\*.log&#xD;&#xA;&#xD;&#xA;xcopy $(ProjectDir)configurations\* $(ProjectDir)$(OutDir) /Y&#xD;&#xA;xcopy $(ProjectDir)$(OutDir) $(ProjectDir)..\..\bin\$(Configuration)\ /Y" />
-  </Target>
 </Project>
