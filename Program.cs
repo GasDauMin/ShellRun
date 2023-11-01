@@ -37,7 +37,7 @@ Remarks:
     properties    Displays the object's properties.
     runas         Launches an application as Administrator.
 
-  Description for allowed [-f|--flag] values:
+  Description for allowed [-g|--flag] values:
     d             Debug mode.
     e             Expand environment variables.
     h             Hide console window.
